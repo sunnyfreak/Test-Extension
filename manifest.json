@@ -1,0 +1,24 @@
+{
+    "manifest_version": 3,
+    "name": "GA4 / GTM Inspector (Simple)",
+    "version": "1.0",
+    "description": "Inspect GA4/GTM data in DevTools.",
+    "background": {
+      "service_worker": "background.js"
+    },
+    "devtools_page": "devtools.html",
+    "content_scripts": [
+      {
+        "matches": ["<all_urls>"],
+        "js": ["contentScript.js"],
+        "run_at": "document_start"
+      }
+    ],
+    "web_accessible_resources": [
+      {
+        "resources": ["injected.js"],
+        "matches": ["<all_urls>"]
+      }
+    ]
+  }
+  
