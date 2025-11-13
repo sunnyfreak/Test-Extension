@@ -3,6 +3,38 @@ let pages = []; // [{id, url, expanded, activeTab, gtmEvents, ga4Events, selecte
 let activePageId = null;
 let globalEventCounter = 0;
 
+// ====== POC: hard-coded dataLayer spec ======
+const dlSpec = {
+  homepage_category_bar: {
+    params: {
+      page_type: "string",
+      cta_text: "string",
+      link_path: "string",
+      user_type_event: "string",
+      User_ID_event: "string",
+      PC1: "string",
+      PC2: "string",
+    },
+  },
+
+  about_us_click:{
+    params: {
+      page_type: "string",
+      section_name: "string",
+      cta_text: "string",
+      sub_section_name: "string",
+      selection_type: "string",
+      link_path: "string",
+      user_type_event: "string",
+      User_ID_event: "string",
+      PC1: "string",
+      PC2: "string",
+    },
+  }
+};
+
+
+
 const pageContainer = document.getElementById("pageContainer");
 
 // Optional status bar
@@ -212,6 +244,79 @@ function pushEventToCurrentPage(source, eventData) {
   render();
 }
 
+// ====== VALIDATION HELPERS (PoC) ======
+
+function getJsType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value; // "string", "number", "boolean", "object", "undefined"
+}
+
+function compareEventWithSpec(eventObj) {
+  if (!eventObj || !eventObj.name) {
+    return {
+      hasSpec: false,
+      message: "No event name on this push.",
+    };
+  }
+
+  const spec = dlSpec[eventObj.name];
+  if (!spec) {
+    return {
+      hasSpec: false,
+      message: "No spec defined for this event in dlSpec.",
+    };
+  }
+
+  const expectedParams = spec.params || {};
+  const expectedKeys = Object.keys(expectedParams);
+
+  // Actual params: take top-level keys except "event" and "gtm"
+  const actualPayload = eventObj.payload || {};
+  const actualKeys = Object.keys(actualPayload).filter(
+    (k) => k !== "event" && !k.startsWith("gtm.")
+  );
+
+  const missing = [];
+  const extra = [];
+  const typeMismatches = [];
+
+  // Check expected vs actual
+  expectedKeys.forEach((key) => {
+    if (!actualKeys.includes(key)) {
+      missing.push(key);
+    } else {
+      const expectedType = expectedParams[key];
+      const actualType = getJsType(actualPayload[key]);
+      if (expectedType && expectedType !== actualType) {
+        typeMismatches.push({
+          key,
+          expectedType,
+          actualType,
+        });
+      }
+    }
+  });
+
+  // Find extra keys not in spec
+  actualKeys.forEach((key) => {
+    if (!expectedKeys.includes(key)) {
+      extra.push(key);
+    }
+  });
+
+  return {
+    hasSpec: true,
+    eventName: eventObj.name,
+    expectedCount: expectedKeys.length,
+    actualCount: actualKeys.length,
+    missing,
+    extra,
+    typeMismatches,
+  };
+}
+
+
 // ====== RENDERING ======
 
 function render() {
@@ -355,39 +460,86 @@ function render() {
         });
 
         // RIGHT: details pane
-        const details = document.createElement("div");
-        details.className = "events-details";
+const details = document.createElement("div");
+details.className = "events-details";
 
-        if (selectedEvent) {
-          const header = document.createElement("div");
-          header.className = "details-header";
+if (selectedEvent) {
+  const header = document.createElement("div");
+  header.className = "details-header";
 
-          const left = document.createElement("div");
-          left.innerHTML =
-            `<span class="details-event-name">${selectedEvent.name ||
-              "(no name)"}</span>`;
+  const left = document.createElement("div");
+  left.innerHTML =
+    `<span class="details-event-name">${selectedEvent.name ||
+      "(no name)"}</span>`;
 
-          const right = document.createElement("div");
-          right.textContent =
-            page.activeTab === "gtm"
-              ? "Source: GTM / dataLayer"
-              : "Source: GA4 network hit";
+  const right = document.createElement("div");
+  right.textContent =
+    page.activeTab === "gtm"
+      ? "Source: GTM / dataLayer"
+      : "Source: GA4 network hit";
 
-          header.appendChild(left);
-          header.appendChild(right);
+  header.appendChild(left);
+  header.appendChild(right);
+  details.appendChild(header);
 
-          const pre = document.createElement("pre");
-          pre.className = "payload-pre";
-          pre.textContent = JSON.stringify(selectedEvent.payload, null, 2);
+  // --- PoC validation summary for GTM events ---
+  if (page.activeTab === "gtm") {
+    const v = compareEventWithSpec(selectedEvent);
 
-          details.appendChild(header);
-          details.appendChild(pre);
-        } else {
-          const emptyDetail = document.createElement("div");
-          emptyDetail.className = "no-events";
-          emptyDetail.textContent = "No event selected.";
-          details.appendChild(emptyDetail);
-        }
+    const summary = document.createElement("div");
+    summary.style.fontSize = "10px";
+    summary.style.margin = "4px 0 6px";
+    summary.style.padding = "4px 6px";
+    summary.style.borderRadius = "4px";
+    summary.style.background = v.hasSpec ? "#101829" : "#291010";
+
+    if (!v.hasSpec) {
+      summary.textContent = `Validation: ${v.message}`;
+    } else {
+      const lines = [];
+
+      lines.push(
+        `Spec found for "${v.eventName}" · Expected params: ${v.expectedCount} · Actual: ${v.actualCount}`
+      );
+
+      if (v.missing.length) {
+        lines.push(`Missing: ${v.missing.join(", ")}`);
+      }
+      if (v.extra.length) {
+        lines.push(`Extra: ${v.extra.join(", ")}`);
+      }
+      if (v.typeMismatches.length) {
+        const t = v.typeMismatches
+          .map(
+            (m) => `${m.key} (expected ${m.expectedType}, got ${m.actualType})`
+          )
+          .join("; ");
+        lines.push(`Type mismatches: ${t}`);
+      }
+
+      if (!v.missing.length && !v.extra.length && !v.typeMismatches.length) {
+        lines.push("✅ All parameters match the spec.");
+      }
+
+      summary.textContent = "Validation: " + lines.join(" · ");
+    }
+
+    details.appendChild(summary);
+  }
+
+  // Payload JSON
+  const pre = document.createElement("pre");
+  pre.className = "payload-pre";
+  pre.textContent = JSON.stringify(selectedEvent.payload, null, 2);
+
+  details.appendChild(pre);
+} else {
+  const emptyDetail = document.createElement("div");
+  emptyDetail.className = "no-events";
+  emptyDetail.textContent = "No event selected.";
+  details.appendChild(emptyDetail);
+}
+
 
         layout.appendChild(listDiv);
         layout.appendChild(details);
