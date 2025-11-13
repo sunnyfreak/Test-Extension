@@ -1,11 +1,11 @@
 // ====== GLOBAL STATE ======
-let pages = []; // [{id, url, expanded, activeTab, gtmEvents, ga4Events}]
+let pages = []; // [{id, url, expanded, activeTab, gtmEvents, ga4Events, selectedGtmId, selectedGa4Id}]
 let activePageId = null;
 let globalEventCounter = 0;
 
 const pageContainer = document.getElementById("pageContainer");
 
-// small helper: status bar if present
+// Optional status bar
 const statusBar = document.getElementById("statusBar");
 const devtoolsAvailable = !!chrome.devtools;
 const networkAvailable = devtoolsAvailable && !!chrome.devtools.network;
@@ -33,16 +33,15 @@ chrome.devtools.inspectedWindow.eval("location.href", (href, exceptionInfo) => {
   addNewPage(url);
 });
 
-// On navigation, create a new page section & collapse previous
+// When tab navigates, start a new page section
 if (chrome.devtools && chrome.devtools.network) {
   chrome.devtools.network.onNavigated.addListener((url) => {
     addNewPage(url);
   });
 }
 
-// ====== MESSAGE LISTENERS (GTM) ======
+// ====== MESSAGE LISTENERS (GTM / dataLayer) ======
 
-// GTM events from background (dataLayer)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "dataLayerPush") {
     const args = msg.payload?.args || [];
@@ -63,10 +62,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ====== MESSAGE LISTENER (NETWORK → GA4 TAB) ======
+// ====== NETWORK LISTENER (GA4 hits → GA4 tab) ======
 
-// TEMP: push EVERY network request into GA4 tab to confirm UI pipeline
-// GA4 / GA measurement hits → GA4 tab
 if (chrome.devtools && chrome.devtools.network) {
   chrome.devtools.network.onRequestFinished.addListener((request) => {
     const reqUrl = request.request?.url || "";
@@ -85,7 +82,7 @@ if (chrome.devtools && chrome.devtools.network) {
     const host = urlObj.hostname || "";
     const path = urlObj.pathname || "";
 
-    // 1) Only GA / analytics hosts
+    // Only GA / analytics hosts we care about
     const isAnalyticsHost =
       host.includes("google-analytics.com") ||
       host.includes("analytics.google.com") ||
@@ -93,13 +90,13 @@ if (chrome.devtools && chrome.devtools.network) {
 
     if (!isAnalyticsHost) return;
 
-    // 2) Collect query params
+    // Collect query params
     const params = {};
     urlObj.searchParams.forEach((value, key) => {
       params[key] = value;
     });
 
-    // 3) Merge POST body params if present
+    // Merge POST body params if present
     if (request.request.postData && request.request.postData.text) {
       const bodyText = request.request.postData.text;
       try {
@@ -114,14 +111,12 @@ if (chrome.devtools && chrome.devtools.network) {
       }
     }
 
-    // 4) Detect GA4 vs ignore
-    // GA4 web hits: v=2, have 'en' (event name)
+    // Detect GA4 by version or 'en' (event name)
     const version = params.v;
     const eventName = params.en;
     const isGA4 = version === "2" || !!eventName;
 
     if (!isGA4) {
-      // You *could* later add a separate UA/other tab here
       console.log("[GA4 Inspector] analytics hit ignored (not GA4): v=", version);
       return;
     }
@@ -130,7 +125,6 @@ if (chrome.devtools && chrome.devtools.network) {
 
     console.log("[GA4 Inspector] GA4 hit detected:", name, params);
 
-    // 5) Push into GA4 events for current page
     pushEventToCurrentPage("ga4", {
       rawType: "ga4-hit",
       name,
@@ -144,7 +138,6 @@ if (chrome.devtools && chrome.devtools.network) {
 } else {
   console.warn("[GA4 Inspector] chrome.devtools.network not available in panel");
 }
-
 
 // ====== STATE HELPERS ======
 
@@ -161,12 +154,14 @@ function addNewPage(url) {
     id,
     url,
     expanded: true,
-    activeTab: "gtm", // default tab
+    activeTab: "gtm",
     gtmEvents: [],
     ga4Events: [],
+    selectedGtmId: null,
+    selectedGa4Id: null,
   };
 
-  pages.unshift(page); // newest page at top
+  pages.unshift(page); // newest first
   activePageId = id;
 
   console.log("[GA4 Inspector] addNewPage", url, "id:", id);
@@ -255,7 +250,7 @@ function render() {
       const body = document.createElement("div");
       body.className = "page-body";
 
-      // Tabs row
+      // Tabs
       const tabs = document.createElement("div");
       tabs.className = "tabs";
 
@@ -281,7 +276,7 @@ function render() {
       tabs.appendChild(ga4Btn);
       body.appendChild(tabs);
 
-      // Small counts line for extra clarity
+      // Counts line
       const counts = document.createElement("div");
       counts.style.fontSize = "10px";
       counts.style.color = "#aaa";
@@ -291,64 +286,113 @@ function render() {
         `GA4 events (network hits): ${page.ga4Events.length}`;
       body.appendChild(counts);
 
-      // Table
-      const table = document.createElement("table");
-
-      const thead = document.createElement("thead");
-      thead.innerHTML = `
-        <tr>
-          <th>#</th>
-          <th>Type</th>
-          <th>Event / URL</th>
-          <th>Payload</th>
-        </tr>
-      `;
-      table.appendChild(thead);
-
-      const tbody = document.createElement("tbody");
-
+      // Which events to show?
       const eventsToShow =
         page.activeTab === "gtm" ? page.gtmEvents : page.ga4Events;
 
       if (!eventsToShow.length) {
-        const tr = document.createElement("tr");
-        const td = document.createElement("td");
-        td.colSpan = 4;
-        td.className = "no-events";
-        td.textContent =
+        const empty = document.createElement("div");
+        empty.className = "no-events";
+        empty.textContent =
           page.activeTab === "gtm"
             ? "No GTM (dataLayer) events captured yet."
-            : "No network events captured yet. Make sure the panel is open, then reload the page.";
-        tr.appendChild(td);
-        tbody.appendChild(tr);
+            : "No GA4 hits captured yet. Keep the panel open and reload.";
+        body.appendChild(empty);
       } else {
+        // ----- Master-detail layout -----
+        const layout = document.createElement("div");
+        layout.className = "events-layout";
+
+        // figure out selected event for this tab
+        let selectedId =
+          page.activeTab === "gtm" ? page.selectedGtmId : page.selectedGa4Id;
+
+        if (!selectedId && eventsToShow.length) {
+          selectedId = eventsToShow[0].id;
+        }
+        let selectedEvent =
+          eventsToShow.find((ev) => ev.id === selectedId) ||
+          eventsToShow[0];
+
+        if (page.activeTab === "gtm") {
+          page.selectedGtmId = selectedEvent ? selectedEvent.id : null;
+        } else {
+          page.selectedGa4Id = selectedEvent ? selectedEvent.id : null;
+        }
+
+        // LEFT: events list
+        const listDiv = document.createElement("div");
+        listDiv.className = "events-list";
+
         eventsToShow.forEach((ev) => {
-          const tr = document.createElement("tr");
+          const row = document.createElement("div");
+          row.className = "event-row";
+          if (selectedEvent && ev.id === selectedEvent.id) {
+            row.classList.add("active");
+          }
 
-          const tdIndex = document.createElement("td");
-          tdIndex.textContent = String(ev.id);
+          const idx = document.createElement("span");
+          idx.className = "event-index";
+          idx.textContent = `#${ev.id}`;
 
-          const tdType = document.createElement("td");
-          tdType.textContent = ev.rawType || ev.source;
+          const title = document.createElement("span");
+          title.className = "event-title";
+          title.textContent = ev.name || "(no name)";
 
-          const tdName = document.createElement("td");
-          tdName.className = "event-name";
-          tdName.textContent = ev.name;
+          row.appendChild(idx);
+          row.appendChild(title);
 
-          const tdPayload = document.createElement("td");
-          tdPayload.textContent = JSON.stringify(ev.payload, null, 2);
+          row.addEventListener("click", () => {
+            if (page.activeTab === "gtm") {
+              page.selectedGtmId = ev.id;
+            } else {
+              page.selectedGa4Id = ev.id;
+            }
+            render();
+          });
 
-          tr.appendChild(tdIndex);
-          tr.appendChild(tdType);
-          tr.appendChild(tdName);
-          tr.appendChild(tdPayload);
-
-          tbody.appendChild(tr);
+          listDiv.appendChild(row);
         });
-      }
 
-      table.appendChild(tbody);
-      body.appendChild(table);
+        // RIGHT: details pane
+        const details = document.createElement("div");
+        details.className = "events-details";
+
+        if (selectedEvent) {
+          const header = document.createElement("div");
+          header.className = "details-header";
+
+          const left = document.createElement("div");
+          left.innerHTML =
+            `<span class="details-event-name">${selectedEvent.name ||
+              "(no name)"}</span>`;
+
+          const right = document.createElement("div");
+          right.textContent =
+            page.activeTab === "gtm"
+              ? "Source: GTM / dataLayer"
+              : "Source: GA4 network hit";
+
+          header.appendChild(left);
+          header.appendChild(right);
+
+          const pre = document.createElement("pre");
+          pre.className = "payload-pre";
+          pre.textContent = JSON.stringify(selectedEvent.payload, null, 2);
+
+          details.appendChild(header);
+          details.appendChild(pre);
+        } else {
+          const emptyDetail = document.createElement("div");
+          emptyDetail.className = "no-events";
+          emptyDetail.textContent = "No event selected.";
+          details.appendChild(emptyDetail);
+        }
+
+        layout.appendChild(listDiv);
+        layout.appendChild(details);
+        body.appendChild(layout);
+      }
 
       section.appendChild(body);
     }

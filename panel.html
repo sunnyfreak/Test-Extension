@@ -111,3 +111,84 @@
     <script src="panel.js"></script>
   </body>
 </html>
+
+<style>
+  /* existing styles … */
+
+  .events-layout {
+    display: flex;
+    border: 1px solid #333;
+    border-radius: 6px;
+    overflow: hidden;
+    height: 260px; /* tweak as you like */
+  }
+
+  .events-list {
+    width: 32%;
+    background: #111527;
+    border-right: 1px solid #333;
+    overflow-y: auto;
+  }
+
+  .event-row {
+    padding: 4px 8px;
+    font-size: 11px;
+    border-bottom: 1px solid #252a3d;
+    cursor: pointer;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .event-row:hover {
+    background: #1b2238;
+  }
+
+  .event-row.active {
+    background: #06F3AA22;
+    border-left: 2px solid #06F3AA;
+  }
+
+  .event-index {
+    font-weight: 600;
+    color: #f5f5f5;
+    min-width: 32px;
+  }
+
+  .event-title {
+    color: #e2e6ff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .events-details {
+    flex: 1;
+    background: #050814;
+    padding: 6px 8px;
+    overflow: auto;
+  }
+
+  .details-header {
+    font-size: 11px;
+    color: #b0b6dd;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .details-event-name {
+    color: #06F3AA;
+    font-weight: 600;
+  }
+
+  .payload-pre {
+    font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono",
+      "Courier New", monospace;
+    font-size: 11px;
+    white-space: pre;
+    margin: 0;
+    color: #aee3ff;
+  }
+</style>
