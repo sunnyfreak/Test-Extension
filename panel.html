@@ -11,38 +11,103 @@
         color: #f5f5f5;
         font-size: 12px;
       }
-      table { width: 100%; border-collapse: collapse; }
-      th, td {
+
+      .page-section {
+        border: 1px solid #333;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        overflow: hidden;
+      }
+
+      .page-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        background: #151b30;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .chevron {
+        font-size: 10px;
+        width: 14px;
+      }
+
+      .page-url {
+        font-size: 11px;
+        color: #b5b9d6;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .page-body {
+        padding: 6px 8px 10px;
+        background: #0b1020;
+      }
+
+      .tabs {
+        display: inline-flex;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid #333;
+        margin-bottom: 6px;
+      }
+
+      .tab-btn {
+        padding: 4px 10px;
+        font-size: 11px;
+        background: #0b1020;
+        border: none;
+        color: #ccc;
+        cursor: pointer;
+      }
+
+      .tab-btn.active {
+        background: #06F3AA;
+        color: #0b1020;
+        font-weight: 600;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
         border-bottom: 1px solid #333;
         padding: 4px 6px;
         text-align: left;
         vertical-align: top;
       }
+
       th {
         background: #151b30;
         position: sticky;
         top: 0;
+        font-weight: 500;
       }
+
       .event-name {
         font-weight: 600;
         color: #06F3AA;
       }
+
+      .no-events {
+        font-size: 11px;
+        color: #888;
+        padding: 4px 2px;
+      }
     </style>
   </head>
   <body>
-    <h3>GA4 / GTM Events</h3>
-    <table id="eventsTable">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Type</th>
-          <th>Event</th>
-          <th>Payload</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-
+    <h3 style="margin: 0 0 6px">GA4 / GTM Inspector</h3>
+    <div id="pageContainer"></div>
+    <h3 style="margin: 0 0 4px">GA4 / GTM Inspector</h3>
+    <div id="statusBar" style="font-size:10px;color:#aaa;margin-bottom:6px;"></div>
+    <div id="pageContainer"></div>
     <script src="panel.js"></script>
   </body>
 </html>
